@@ -186,8 +186,7 @@ calculate_mean_for_list_of_elements <- function(elements) {
 
 
 correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_sim_runs, log_file_name, number_of_motivelevels, 
-                                                        number_of_picture_effects, number_of_sustained_effects, first_relevant_aff_picture,
-                                                        first_relevant_ach_picture, first_relevant_pow_picture, number_of_cores, comparision_numbers_to_keep=NULL, 
+                                                        number_of_picture_effects, number_of_sustained_effects, number_of_cores, comparision_numbers_to_keep=NULL, 
                                                         include_gender=FALSE) {
   # Write output to log AND screen
   sink(log_file_name, append=TRUE, split=TRUE)
@@ -230,11 +229,11 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
     }
       
     simulated_testdata_from_model$PICAFF <- as.factor(ifelse(simulated_testdata_from_model$DAFF != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_aff_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     simulated_testdata_from_model$PICACH <- as.factor(ifelse(simulated_testdata_from_model$DACH != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_ach_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     simulated_testdata_from_model$PICPOW <- as.factor(ifelse(simulated_testdata_from_model$DPOW != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_pow_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     print(colnames(simulated_testdata_from_model))
     print(Sys.time())
     model_from_sim_data <- glmmTMB(formula(glmm_model),
@@ -299,11 +298,11 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
     }
       
     simulated_testdata_from_model$PICAFF <- as.factor(ifelse(simulated_testdata_from_model$DAFF != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_aff_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     simulated_testdata_from_model$PICACH <- as.factor(ifelse(simulated_testdata_from_model$DACH != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_ach_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     simulated_testdata_from_model$PICPOW <- as.factor(ifelse(simulated_testdata_from_model$DPOW != 0,
-                                                             simulated_testdata_from_model$Picture, first_relevant_pow_picture))
+                                                             simulated_testdata_from_model$Picture, 1))
     print(Sys.time())
     model_from_sim_data <- glmmTMB(formula(glmm_model),
                                    family=binomial("probit"),data=select(simulated_testdata_from_model, !matches("^true.*")),
