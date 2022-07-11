@@ -17,6 +17,48 @@ return_probit_vectors <- function(motivelvls) {
                 ncol=length(base), byrow=TRUE))
 }
 
+get_number_of_excluded_picture_motive_effects <- function(unwanted_picture_motive_mapping) {
+  result = 0
+  for (picture in names(unwanted_picture_motive_mapping)) {
+    for (motive in unname(unlist(unwanted_picture_motive_mapping[picture]))) {
+      result = result + 1
+    }
+  }
+  return(result)
+}
+
+get_empty_spot_number <- function(motive) {
+  return(ifelse(motive %in% c("DAFF", "DAFF1"), 0,
+             ifelse(motive %in% c("DACH", "DAFF2"), 1,
+                    ifelse(motive %in% c("DPOW", "DAFF3"), 2,
+                           ifelse(motive == "DAFF4", 3,
+                                  ifelse(motive == "DAFF5", 4,
+                                         ifelse(motive == "DACH1", 5,
+                                                ifelse(motive == "DACH2", 6,
+                                                       ifelse(motive == "DACH3", 7,
+                                                              ifelse(motive == "DACH4", 8,
+                                                                     ifelse(motive == "DACH5", 9,
+                                                                            ifelse(motive == "DPOW1", 10,
+                                                                                   ifelse(motive == "DPOW2", 11,
+                                                                                          ifelse(motive == "DPOW3", 12,
+                                                                                                 ifelse(motive == "DPOW45", 13, 14)))))))))))))))
+}
+
+add_dummies_to_complete_picture_effect_list <- function(picture_effects, unwanted_picture_motive_mapping, number_of_motive_categories) {
+  empty_piceff_spots = c()
+  for (picture in names(unwanted_picture_motive_mapping)) {
+    for (motive in unname(unlist(unwanted_picture_motive_mapping[picture]))) {
+      empty_piceff_spots = c(empty_piceff_spots, 
+                             (((as.integer(picture) - 1) * number_of_motive_categories) + 
+                              get_empty_spot_number(motive)))
+    }
+  }
+  for (empty_spot_num in empty_piceff_spots) {
+    picture_effects <- append(picture_effects, 0, empty_spot_num)
+  }
+  return(picture_effects)
+}
+
 add_base_motives <- function(data, motive) {
   data[motive] <- as.integer(rowSums(
       select(data, matches(paste("^", motive, ".*", sep="")))
@@ -26,7 +68,7 @@ add_base_motives <- function(data, motive) {
 
 generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture, 
                               n_dynamic_effects, picture_bias=NULL, 
-                              sustained_effect_bias=NULL, include_gender=FALSE) {
+                              sustained_effect_bias=NULL, include_gender=FALSE, unwanted_picture_motive_mapping=NULL) {
   # This function assumes that the order of the fixed effects in the model is
   # picture effects first, followed by dynamic effects
   # n_motivelevels means number of all motive levels except the 0-motive
@@ -34,13 +76,32 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   # Declare some variables
   number_of_omt_pictures <- 15
   list_of_motives <- list("AFF", "ACH", "POW")
-  do_lvls_exist <- ifelse(n_motivelevels / length(list_of_motives) == 1, 
-                          FALSE, TRUE)
+  do_lvls_exist <- ifelse(n_motivelevels / length(list_of_motives) == 1, FALSE, TRUE)
   n_subjects <- unname(summary(model)$ngrps$cond)
   number_of_motive_lvl_comparisions <- ((n_motivelevels + 1)*n_motivelevels)/2
+  number_of_missing_piceffs <- get_number_of_excluded_picture_motive_effects(
+      unwanted_picture_motive_mapping=unwanted_picture_motive_mapping
+  )
+    
+  # extract and reshape picture effects from model AND correct if picture bias is given
+  picture_effects=unname(model$fit$par[1:(n_motivelevels_picture * number_of_omt_pictures - number_of_missing_piceffs)])
+  if (!is.null(picture_bias)) {
+    print("ATTENTION: Including picture effect bias:")
+    print(paste(picture_bias[1], "...", picture_bias[length(picture_bias)]))
+    picture_effects <- picture_effects + picture_bias
+    print("Inclusion finished:")
+    print(paste(picture_effects[1], "...", picture_effects[length(picture_effects)]))  
+  }
+  picture_effects <- add_dummies_to_complete_picture_effect_list(
+    picture_effects=picture_effects,
+    unwanted_picture_motive_mapping=unwanted_picture_motive_mapping, 
+    number_of_motive_categories=n_motivelevels
+  )
+  pes <- matrix(picture_effects, nrow=number_of_omt_pictures, ncol=n_motivelevels_picture)
+    
   dynamic_effects <- unname(model$fit$par[
-    (n_motivelevels_picture * number_of_omt_pictures + 1):
-      (n_motivelevels_picture * number_of_omt_pictures + n_dynamic_effects)
+    (n_motivelevels_picture * number_of_omt_pictures - number_of_missing_piceffs + 1):
+      (n_motivelevels_picture * number_of_omt_pictures - number_of_missing_piceffs + n_dynamic_effects)
   ])
   if (!is.null(sustained_effect_bias)) {
     print("ATTENTION: Including sustained effect bias!")
@@ -54,8 +115,8 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   if (include_gender) {
     gender_effects <- c(
       rep(unname(model$fit$par[
-      (n_motivelevels_picture * number_of_omt_pictures + 
-       n_dynamic_effects + include_gender)
+      (n_motivelevels_picture * number_of_omt_pictures - 
+       number_of_missing_piceffs + n_dynamic_effects + include_gender)
       ]), (n_motivelevels/length(list_of_motives))),
       rep(0, (n_motivelevels/length(list_of_motives))), 
       rep(0, (n_motivelevels/length(list_of_motives)))
@@ -99,16 +160,10 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   # create random effects for n motive(-levels) for simulation via random numbers
   # drawn from normal distribution for mean 0 and the given random effect covariance matrix sigma
   res <- rmvnorm(n_subjects, mean=rep(0, n_motivelevels), sigma=ranefcor*ranefsd%*%t(ranefsd))
-  # extract and reshape picture effects from model AND correct if picture bias is given
-  picture_effects <- unname(model$fit$par[1:(n_motivelevels_picture*number_of_omt_pictures)])
-  if (!is.null(picture_bias)) {
-    print("ATTENTION: Including picture effect bias!")
-    picture_effects <- picture_effects + picture_bias
-  }
-  pes <- matrix(picture_effects, nrow=number_of_omt_pictures, ncol=n_motivelevels_picture)
+  
   # Create shell/skeleton for simulation
   num_of_cols_till_response <- 1 + n_motivelevels + 1 # Person, raneff, picture
-  num_of_needed_cols <- num_of_cols_till_response + 2 + (n_motivelevels + 1) + n_dynamic_effects + include_gender # response1/2, probits, dynamic effs, gender
+  num_of_needed_cols <- num_of_cols_till_response + 2 + (n_motivelevels + 1) + n_dynamic_effects + 1 # response1/2, probit-vector, dynamic effs, gender
   
   idata <- matrix(c(rep(1:n_subjects, each=number_of_omt_pictures*number_of_motive_lvl_comparisions),
                     rep(as.vector(res), each=number_of_omt_pictures*number_of_motive_lvl_comparisions),
@@ -165,15 +220,14 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   return(idata)
 }
 
-remove_comparisions <- function(number_of_motivecomparisions_per_person, comparision_numbers_to_keep, data) {
-  datalist = list()
-  for (i in (0:((nrow(data) / number_of_motivecomparisions_per_person) - 1))) {
-    for (num in comparision_numbers_to_keep) {
-        dat <- data[(num + (i * number_of_motivecomparisions_per_person)), ]
-        datalist[[(num + (i * number_of_motivecomparisions_per_person))]] <- dat # add it to your list
+remove_underrepresented_comparisions <- function(dataframe, unwanted_picture_motive_mapping) {
+  for (picture in names(unwanted_picture_motive_mapping)) {
+    for (motive in unname(unlist(unwanted_picture_motive_mapping[picture]))) {
+      dataframe <- dataframe[which(!((dataframe[,motive] %in% c(-1, 1)) & (dataframe$Picture == as.integer(picture)))),]
     }
   }
-  return(do.call(rbind, datalist))    
+  rownames(dataframe) <- NULL
+  return(dataframe)
 }
 
 calculate_mean_for_list_of_elements <- function(elements) {
@@ -186,23 +240,19 @@ calculate_mean_for_list_of_elements <- function(elements) {
 
 
 correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_sim_runs, log_file_name, number_of_motivelevels, 
-                                                        number_of_picture_effects, number_of_sustained_effects, number_of_cores, comparision_numbers_to_keep=NULL, 
+                                                        number_of_picture_effects, number_of_sustained_effects, first_relevant_aff_picture,
+                                                        first_relevant_ach_picture, first_relevant_pow_picture, number_of_cores, unwanted_picture_motive_mapping=NULL, 
                                                         include_gender=FALSE) {
   # Write output to log AND screen
   sink(log_file_name, append=TRUE, split=TRUE)
   print(Sys.time())
 
-  # check model dimensions
   number_of_pictures <- 15
-  number_of_fixed_effects_in_model <- dim(coef(summary(glmm_model))$cond)[1]
-  if (number_of_fixed_effects_in_model != ((number_of_pictures * number_of_picture_effects) + number_of_sustained_effects + include_gender)) {
-    sink()
-    stop("Given model does not match the given numbers of effects. Please recheck your function input.")
-  }
   fixed_coefs <- list()
   reliability_scores <- list()
   ranef_std_devs <- list()
   ranef_correlations <- list()
+    
   # Step 1: calculate the average over number_of_sim_runs fixed effect estimates
   print(sprintf("ESTIMATING %s MODELS FROM SIMULATED DATASETS", number_of_sim_runs))
   for (i in 1:number_of_sim_runs) {
@@ -214,26 +264,26 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
       n_motivelevels=number_of_motivelevels,
       n_motivelevels_picture=number_of_picture_effects,
       n_dynamic_effects=number_of_sustained_effects,
-      include_gender=include_gender
+      include_gender=include_gender,
+      unwanted_picture_motive_mapping=unwanted_picture_motive_mapping
     )
       
-    if (!is.null(comparision_numbers_to_keep)) {
+    if (!is.null(unwanted_picture_motive_mapping)) {
       print("ATTENTION: Removing underrepresented comparisions!")
       print(sprintf("Previous length: %s", nrow(simulated_testdata_from_model)))
-      simulated_testdata_from_model <- remove_comparisions(
-        number_of_motivecomparisions_per_person=number_of_pictures * number_of_motivelevels,
-        comparision_numbers_to_keep=comparision_numbers_to_keep,
-        data=simulated_testdata_from_model
-        )
+      simulated_testdata_from_model <- remove_underrepresented_comparisions(
+        dataframe=simulated_testdata_from_model,
+        unwanted_picture_motive_mapping=unwanted_picture_motive_mapping
+      )
       print(sprintf("Shortened length: %s", nrow(simulated_testdata_from_model)))
     }
       
     simulated_testdata_from_model$PICAFF <- as.factor(ifelse(simulated_testdata_from_model$DAFF != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_aff_picture))
     simulated_testdata_from_model$PICACH <- as.factor(ifelse(simulated_testdata_from_model$DACH != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_ach_picture))
     simulated_testdata_from_model$PICPOW <- as.factor(ifelse(simulated_testdata_from_model$DPOW != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_pow_picture))
     print(colnames(simulated_testdata_from_model))
     print(Sys.time())
     model_from_sim_data <- glmmTMB(formula(glmm_model),
@@ -245,6 +295,7 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
     print(sprintf("Model results for test model %s:", i))
     print(summary(model_from_sim_data))
     print(sprintf("Reliability: %s", diag(cor(ranef(model_from_sim_data)$cond$Person, unique(simulated_testdata_from_model[,2:(number_of_motivelevels + 1)]))^2)))
+    print(sprintf("R-squared: %s", r2_nakagawa(model_from_sim_data)))
     fixed_coefs <- c(fixed_coefs, list(coef(summary(model_from_sim_data))$cond))
     reliability_scores <- c(reliability_scores, list(diag(cor(ranef(model_from_sim_data)$cond$Person, unique(simulated_testdata_from_model[,2:(number_of_motivelevels + 1)]))^2)))
     ranef_std_devs <- c(ranef_std_devs, list(unname(attributes(summary(model_from_sim_data)$varcor$cond$Person)$stddev)))
@@ -255,7 +306,8 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
   print("CALCULATING THE AVERAGE OF THE RUNS AS WELL AS THE BIAS")
   coef_mean <- calculate_mean_for_list_of_elements(elements = fixed_coefs)
   coef_bias <- coef(summary(glmm_model))$cond - coef_mean
-  picture_bias <- coef_bias[1:(number_of_picture_effects * number_of_pictures)]
+  picture_bias <- coef_bias[1:(number_of_picture_effects * number_of_pictures - 
+                               get_number_of_excluded_picture_motive_effects(unwanted_picture_motive_mapping))]
   
   print("SUMMARY OF MODEL AVERAGES:")
   print("Average coefs:")
@@ -283,26 +335,26 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
       n_motivelevels_picture = number_of_picture_effects,
       n_dynamic_effects = number_of_sustained_effects,
       picture_bias = picture_bias,
-      include_gender=include_gender
+      include_gender=include_gender,
+      unwanted_picture_motive_mapping=unwanted_picture_motive_mapping
     )
       
-    if (!is.null(comparision_numbers_to_keep)) {
+    if (!is.null(unwanted_picture_motive_mapping)) {
       print("ATTENTION: Removing underrepresented comparisions!")
       print(sprintf("Previous length: %s", nrow(simulated_testdata_from_model)))
-      simulated_testdata_from_model <- remove_comparisions(
-        number_of_motivecomparisions_per_person=number_of_pictures * number_of_motivelevels,
-        comparision_numbers_to_keep=comparision_numbers_to_keep,
-        data=simulated_testdata_from_model
-        )
+      simulated_testdata_from_model <- remove_underrepresented_comparisions(
+        dataframe=simulated_testdata_from_model,
+        unwanted_picture_motive_mapping=unwanted_picture_motive_mapping
+      )
       print(sprintf("Shortened length: %s", nrow(simulated_testdata_from_model)))
     }
       
     simulated_testdata_from_model$PICAFF <- as.factor(ifelse(simulated_testdata_from_model$DAFF != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_aff_picture))
     simulated_testdata_from_model$PICACH <- as.factor(ifelse(simulated_testdata_from_model$DACH != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_ach_picture))
     simulated_testdata_from_model$PICPOW <- as.factor(ifelse(simulated_testdata_from_model$DPOW != 0,
-                                                             simulated_testdata_from_model$Picture, 1))
+                                                             simulated_testdata_from_model$Picture, first_relevant_pow_picture))
     print(Sys.time())
     model_from_sim_data <- glmmTMB(formula(glmm_model),
                                    family=binomial("probit"),data=select(simulated_testdata_from_model, !matches("^true.*")),
@@ -313,6 +365,7 @@ correct_bias_and_calc_reliability_for_model <- function(glmm_model, number_of_si
     print(sprintf("Model results for test model %s:", i))
     print(summary(model_from_sim_data))
     print(sprintf("Reliability: %s", diag(cor(ranef(model_from_sim_data)$cond$Person, unique(simulated_testdata_from_model[,2:(number_of_motivelevels + 1)]))^2)))
+    print(sprintf("R-squared: %s", r2_nakagawa(model_from_sim_data)))
     fixed_coefs <- c(fixed_coefs, list(coef(summary(model_from_sim_data))$cond))
     reliability_scores <- c(reliability_scores, list(diag(cor(ranef(model_from_sim_data)$cond$Person, unique(simulated_testdata_from_model[,2:(number_of_motivelevels + 1)]))^2)))
     ranef_std_devs <- c(ranef_std_devs, list(unname(attributes(summary(model_from_sim_data)$varcor$cond$Person)$stddev)))
