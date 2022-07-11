@@ -7,9 +7,9 @@ The needed instructions to install pandas can be found at https://pypi.org/proje
 The transformation can easily be extended to work for motivelevel data as well, but since there are many ways to achieve the needed data structure, only the functionality to transform motive data is provided.
 
 The R-utility functions can be found in glmm_model_fitting_utils.R.
-The needed installs can be done via
-install.packages("glmmTMB", type="source")
-install.packages("mvtnorm", type="source")
+The needed installs can be done via\
+install.packages("glmmTMB", type="source")\
+install.packages("mvtnorm", type="source")\
 in a R-environment.
 
 ## Examples
