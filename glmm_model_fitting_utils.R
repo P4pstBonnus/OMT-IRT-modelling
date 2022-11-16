@@ -41,7 +41,7 @@ get_empty_spot_number <- function(motive) {
                                                                             ifelse(motive == "DPOW1", 10,
                                                                                    ifelse(motive == "DPOW2", 11,
                                                                                           ifelse(motive == "DPOW3", 12,
-                                                                                                 ifelse(motive == "DPOW45", 13, 14)))))))))))))))
+                                                                                                 ifelse(motive == "DPOW4", 13, 14)))))))))))))))
 }
 
 add_dummies_to_complete_picture_effect_list <- function(picture_effects, unwanted_picture_motive_mapping, number_of_motive_categories) {
