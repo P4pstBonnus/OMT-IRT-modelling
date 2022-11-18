@@ -133,7 +133,7 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   possible_motives <- list()
   possible_truemotives <- list()
   for (motive in list_of_motives) {
-    for (motivelvl in 1:(n_motivelevels / 3)) {
+    for (motivelvl in 1:(n_motivelevels / length(list_of_motives))) {
       possible_motives <- c(possible_motives, 
                             paste("D", motive, ifelse(do_lvls_exist, motivelvl, ""), 
                                   sep=""))
@@ -144,7 +144,7 @@ generate_omt_data <- function(model, n_motivelevels, n_motivelevels_picture,
   
   possible_sustainedeffects <- list()
   for (motive in list_of_motives) {
-    for (motivelvl in 1:(n_dynamic_effects / 3)) {
+    for (motivelvl in 1:(n_dynamic_effects / length(list_of_motives))) {
       possible_sustainedeffects <- c(possible_sustainedeffects, paste("SD", motive, ifelse(do_lvls_exist, motivelvl, ""), sep=""))
     }
   }
