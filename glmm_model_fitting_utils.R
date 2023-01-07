@@ -1,6 +1,7 @@
 library(mvtnorm)
 library(glmmTMB)
 library(dplyr)
+library(performance)
 
 return_probit_vectors <- function(motivelvls) {
   base.names <- motivelvls
